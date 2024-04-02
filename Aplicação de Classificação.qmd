@@ -1,0 +1,600 @@
+---
+title: "Aplicação dos métodos de Classificação"
+author: "Paulo Manoel da Silva Junior"
+lang: pt
+format: 
+  html:
+    theme: materia
+    toc: true
+    toc-title: Sumário
+    toc-depth: 4
+    toc-location: right
+    code-copy: true
+    number-sections: false
+    code-tools: false
+    code-block-bg: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-border-left: "#31BAE9"
+    number-depth: 3
+    html-math-method: mathjax
+self-contained: true
+page-layout: full
+editor: source
+---
+
+# Machine Learning - Aplicação dos métodos de classificação 
+
+:::{.callout-tip}
+## Objetivo 
+
+Aplicar alguns métodos de classificação a um banco de dados, em um problema de classificação e ver qual é melhor com base na **taxa de erro**. 
+:::
+
+## Informações sobre o banco de dados e sobre as variáveis 
+
+
+
+:::{.callout-note}
+
+## Disponibilidade de informação geral
+-   O conjunto de dados trata-se de *11 características clínicas utilizadas para a previsão de possíveis eventos relacionados a doenças cardiovasculares.*
+
+O conjunto de dados pode ser encontrado em: [conjunto de dados](https://www.kaggle.com/datasets/fedesoriano/heart-failure-prediction)
+:::
+
+
+
+**Mais sobre o banco de dados**
+
+As doenças cardiovasculares (DCVs) são a causa número 1 de morte no mundo, levando cerca de 17,9 milhões de vidas a cada ano, o que representa 31% de todas as mortes em todo o mundo. Quatro em cada 5 mortes por DCV são devidas a ataques cardíacos e derrames, e um terço dessas mortes ocorre prematuramente em pessoas com menos de 70 anos de idade. A insuficiência cardíaca é um evento comum causado por DCVs e este conjunto de dados contém 11 recursos que podem ser usados para prever uma possível doença cardíaca.
+
+Pessoas com doenças cardiovasculares ou com alto risco cardiovascular (devido à presença de um ou mais fatores de risco, como hipertensão, diabetes, hiperlipidemia ou doença já estabelecida) precisam de detecção e gerenciamento precoces, em que um modelo de aprendizado de máquina pode ser de grande ajuda.
+
+
+*Sobre as variáveis dependentes:*
+
+`Idade:` idade do paciente em anos
+
+`Sexo:` sexo do paciente \[M: Masculino, F: Feminino\]
+
+`ChestPainType:` tipo de dor no peito \[TA: Angina Típica, ATA: Angina Atípica, NAP: Dor Não Anginosa, ASY: Assintomática\]
+
+`RestingBP:` pressão arterial em repouso \[mm Hg\]
+
+`Colesterol`: colesterol sérico \[mm/dl\]
+
+`JejumBS:` açúcar no sangue em jejum \[1: se JejumBS \> 120 mg/dl, 0: caso contrário\]
+
+`ECG em repouso:` resultados do eletrocardiograma em repouso \[Normal: Normal, ST: com anormalidade da onda ST-T (inversões da onda T e/ou elevação ou depressão do ST \> 0,05 mV), HVE: mostrando hipertrofia ventricular esquerda provável ou definitiva pelos critérios de Estes\]
+
+`MaxHR:` frequência cardíaca máxima alcançada \[Valor numérico entre 60 e 202\]
+
+`ExerciseAngina:` angina induzida por exercício \[S: Sim, N: Não\]
+
+`Oldpeak:` oldpeak = ST \[Valor numérico medido na depressão\]
+
+`ST_Slope:` a inclinação do segmento ST do exercício de pico \[Up: ascendente, Flat: plano, Down: descendente\]
+
+*Sobre a variável resposta:*
+
+`HeartDisease:` classe de saída \[1: doença cardíaca, 0: normal\]
+
+
+
+:::{.callout-important}
+
+## Exclusão de variáveis 
+
+Como os métodos aprendidos estavam utilizando apenas variáveis númericas, vamos excluir as variáveis categóricas para realizar o ajuste dos modelos apenas com as variáveis númericas, a frente quando vermos receita vamos utilizar, pois, podemos transformar essas variáveis categóricas em dummy. 
+
+:::
+
+
+```{r, echo=FALSE, include=FALSE}
+rm(list=ls(all=T))
+gc()
+```
+
+- Carregando o banco de dados 
+
+```{r, message=FALSE, warning=FALSE}
+setwd("\\Users\\paulo\\OneDrive\\Área de Trabalho\\ESTATÍSTICA\\UFPB\\8º PERÍODO\\ANÁLISE MULTIVARIADA II\\PROVA")
+banco <- read.csv2("heart.csv", header = T, sep = ",")
+attach(banco)
+```
+
+- Carregando as bibliotecas 
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(plotly)
+library(skimr)
+library(stringr)
+library(MASS)
+library(class)
+library(tidymodels)
+library(tidyverse)
+```
+
+
+## Análise Exploratória dos Dados 
+
+```{r}
+glimpse(banco)
+```
+
+- Como foi dito anteriormente, vamos ficar apenas com as variáveis que são númericas. 
+
+```{r}
+banco <- banco %>% 
+  dplyr::select(Age,RestingBP,Cholesterol,MaxHR,Oldpeak,HeartDisease)
+
+banco$Oldpeak <- as.numeric(banco$Oldpeak)
+banco$HeartDisease <- factor(banco$HeartDisease, levels = c(0,1), labels = c("Normal", "Doença Cardíaca"))
+
+glimpse(banco)
+```
+
+
+```{r}
+visdat::vis_miss(banco)
+```
+
+
+- Uma análise Exploratória de maneira mais geral, utilizando a função `skim` do pacote `skimr`
+
+```{r}
+skim(banco)
+```
+- Agora, podemos analisar de maneira mais precisa dentro das classes de acordo com algumas medidas (posição e dispersão) de interesse, bem como a visualização gráfica do boxplot dessas variáveis de acordo com o grupo. 
+
+
+:::{.callout-note}
+
+## Medidas de Posição e Dispersão
+
+As medidas de posição e dispersão que serão utilizadas serão:
+
+- Média 
+
+- Mediana
+
+- 1º Quartil 
+
+- 3º Quartil
+
+- Mínimo
+
+- Máximo
+
+- Desvio Padrão 
+
+- Coeficiente de Variação
+
+:::
+
+
+
+:::{.panel-tabset}
+
+## Idade 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Age, na.rm = T),
+            mediana = median(Age, na.rm = T), 
+            quartil_1 = quantile(Age, 0.25, na.rm = T), 
+            quartil_3 = quantile(Age, 0.75, na.rm = T), 
+            minimo = min(Age, na.rm = T), 
+            maximo = max(Age, na.rm = T), 
+            desvio = sd(Age, na.rm = T), 
+            coeficiente = round(sd(Age, na.rm = T)/mean(Age, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Idade de acordo com a presença ou ausência de doença cardíaca")
+```
+
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Age, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Idade de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário
+
+No boxplot acima, pacientes que apresentaram doenças cardíacas possuem uma variabilidade menor de idade quando comparado com pacientes que não apresentaram. Além disso nota-se a presença de 4 outliers referentes a pacientes que apresentaram doenças cardiovasculares antes dos 35 anos.
+
+Também podemos observar 75% dos pacientes que não apresentaram doenças cardiovasculares são mais novos que a idade mediana dos pacientes que apresentaram doenças cardiovasculares. Isto é, pode-se levantar a hipótese de que a idade talvez tenha uma contribuição significativa para o desenvolvimento de doenças cardíacas.
+:::
+
+## Frequência Máxima Cardíaca
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(MaxHR, na.rm = T),
+            mediana = median(MaxHR, na.rm = T), 
+            quartil_1 = quantile(MaxHR, 0.25, na.rm = T), 
+            quartil_3 = quantile(MaxHR, 0.75, na.rm = T), 
+            minimo = min(MaxHR, na.rm = T), 
+            maximo = max(MaxHR, na.rm = T), 
+            desvio = sd(MaxHR, na.rm = T), 
+            coeficiente = round(sd(MaxHR, na.rm = T)/mean(MaxHR, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Frequência Máxima Cardíaca de acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$MaxHR, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Frequência Máxima Cardíaca de acordo com a presença ou ausência de doença cardíaca")
+```
+
+:::{.callout-note}
+
+## Comentário
+
+Como o coração de pessoas com doenças cardíacas não estão funcionando de maneira adequada, quando se é necessária uma carga maior de trabalho o coração desse indivíduo não consegue trabalhar de forma tão eficiente quanto o coração de uma pessoa saudável. Por conta disso, 75% dos indíviduos doentes possuem a frequência máxima cardíaca abaixo da mediana da frequência máxima cardíaca do grupo de pessoas saudáveis.
+:::
+
+## Pressão Arterial em Repouso
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(RestingBP, na.rm = T),
+            mediana = median(RestingBP, na.rm = T), 
+            quartil_1 = quantile(RestingBP, 0.25, na.rm = T), 
+            quartil_3 = quantile(RestingBP, 0.75, na.rm = T), 
+            minimo = min(RestingBP, na.rm = T), 
+            maximo = max(RestingBP, na.rm = T), 
+            desvio = sd(RestingBP, na.rm = T), 
+            coeficiente = round(sd(RestingBP, na.rm = T)/mean(RestingBP, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Pressão Arterial em Repouso de acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$RestingBP, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Pressão Arterial em Repouso de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário 
+
+Apesar de ambos os grupos apresentarem dados semelhantes, o grupo que possui doenças cardiovasculares é ligeiramente maior que o grupo de indivíduos saudáveis. Afinal, o coração doente por não apresentar os batimentos tão eficientes quanto um coração saudável, as artérias tendem a compensar esses batimentos cardíacos aumentando sua pressão.
+
+:::
+
+## Colesterol Sérico 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Cholesterol, na.rm = T),
+            mediana = median(Cholesterol, na.rm = T), 
+            quartil_1 = quantile(Cholesterol, 0.25, na.rm = T), 
+            quartil_3 = quantile(Cholesterol, 0.75, na.rm = T), 
+            minimo = min(Cholesterol, na.rm = T), 
+            maximo = max(Cholesterol, na.rm = T), 
+            desvio = sd(Cholesterol, na.rm = T), 
+            coeficiente = round(sd(Cholesterol, na.rm = T)/mean(Cholesterol, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva do Colesterol Sérico de Acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Cholesterol, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot do Colesterol Sérico de acordo \ncom a presença ou ausência de doença cardíaca")
+```
+
+:::{.callout-note}
+
+## Comentário
+
+Devem existir inúmeros fatores que podem implicar uma maior variabilidade do colesterol no grupo de pessoas que possuem doenças cardíacas, uma delas pode estar relacionada com o fato do uso de medicações para diminuir e tentar controlar esse nível do colesterol.
+
+Após a visualização gráfica do boxplot, observamos uma diferença significativa na variação dos dados do colesterol de acordo com a presença ou ausência de doença cardíaca.
+:::
+
+## Valor númerico medido na depressão 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Oldpeak, na.rm = T),
+            mediana = median(Oldpeak, na.rm = T), 
+            quartil_1 = quantile(Oldpeak, 0.25, na.rm = T), 
+            quartil_3 = quantile(Oldpeak, 0.75, na.rm = T), 
+            minimo = min(Oldpeak, na.rm = T), 
+            maximo = max(Oldpeak, na.rm = T), 
+            desvio = sd(Oldpeak, na.rm = T), 
+            coeficiente = round(sd(Oldpeak, na.rm = T)/mean(Oldpeak, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva do valor númerico medido na depressão de Acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Oldpeak, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot do banco do valor númerico medido \nna depressão de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário 
+
+Podemos observar que no grupo normal, temos a presença de muitos outliers, já no grupo de doença cardíaca, entre o primeiro e terceiro quartil podemos enxergar uma variabilidade maior do que comparando esses mesmos quartis. 
+:::
+
+## Doença Cardíaca 
+
+```{r}
+banco %>% 
+  dplyr::group_by(HeartDisease) %>% 
+  dplyr::summarise(quantidade = n(), 
+            proporção = round(n()/dim(banco)[1]*100,2)) %>%
+  knitr::kable(caption = "Descritiva da Quantidade de Indívidios com ou sem doença cardíaca", col.names = c("Grupo", "Quantidade", "Proporção"))
+  
+```
+:::
+
+Agora, vamos visualizar a matriz de correlação das variáveis preditoras 
+
+```{r}
+rho <- banco %>% 
+  dplyr::select(where(is.numeric)) %>% 
+  cor()
+
+corrplot::corrplot(rho, method = "circle", type = "lower")
+```
+
+## Ajuste dos modelos 
+
+### Particionando o banco de dados 
+
+```{r}
+set.seed(2024)
+banco_split <- initial_split(data = banco, prop = .75, strata = HeartDisease)
+banco_treino <- training(banco_split)
+banco_teste <- testing(banco_split)
+```
+
+- Verificando a quantidade de observações dos bancos, de acordo com a variável de interesse. 
+
+```{r}
+banco_treino %>%
+  dplyr::group_by(HeartDisease) %>% 
+  dplyr::summarise(quantidade = n(), 
+                   proporção = round(n()/dim(banco_treino)[1]*100,2)) %>% 
+  knitr::kable(caption = "Quantidade de Observações por grupo no banco de treino", col.names = c("Grupo", "Quantidade", "Proporção (%)"))
+```
+
+```{r}
+banco_teste %>% 
+  dplyr::group_by(HeartDisease) %>% 
+  dplyr::summarise(quantidade = n(), 
+                   proporção = round(n()/dim(banco_teste)[1]*100,2)) %>% 
+  knitr::kable(caption = "Quantidade de observações por grupo no banco de teste", col.names = c("Grupo", "Quantidade", "Proporção (%)"))
+```
+Podemos observar que a proporção de dados para o teste do modelo de acordo com a quantidade de observações total é de `r round(dim(banco_treino)[1]/dim(banco)[1]*100,4)`%. 
+
+### Ajustando os modelos 
+
+:::{.panel-tabset}
+
+## LDA - Análise Discriminante Linear 
+
+Para a análise discriminante linear, vamos utilizar a função `lda` do pacote `MASS`. 
+
+```{r}
+fit_lda <- lda(HeartDisease ~ ., data = banco_treino)
+```
+
+Podemos agora analisar as médias dos grupos de acordo com as variáveis dependentes que foi estimado pela lda
+
+```{r}
+fit_lda$means
+```
+Agora, usando o modelo para fazer a predição dos valores do banco de teste: 
+
+```{r}
+y_pred_lda <- predict(fit_lda, banco_teste)
+```
+
+Observando a probabilidade posterior dos valores preditos via **LDA**
+
+```{r}
+y_pred_lda$posterior %>% 
+  head(n = 5) %>% 
+  knitr::kable()
+```
+- Verificando a matriz de confusão, bem como algumas métricas trazidas pela função `confusionMatrix` do pacote `caret`. 
+
+```{r}
+caret::confusionMatrix(y_pred_lda$class, banco_teste$HeartDisease)
+```
+```{r}
+taxa_erro_lda <- 1 - caret::confusionMatrix(y_pred_lda$class, banco_teste$HeartDisease)$overall[["Accuracy"]]
+
+taxa_erro_lda
+```
+
+:::{.callout-warning}
+## Comentário Análise Discriminante Linear 
+
+- De acordo com as métricas fornecidas pela matriz de confusão e pela `taxa de erro`, podemos observar que o modelo não foi bem ajustado, isso pode ter acontecido por causa da utilização apenas das variáveis númericas, pois, a acúracia do modelo foi de `r round(caret::confusionMatrix(y_pred_lda$class, banco_teste$HeartDisease)$overall[["Accuracy"]],3)`, sendo baixa. 
+:::
+
+## QDA - Análise Discriminante Quadrátrica 
+
+Para a aplicação da análise discriminante quadrática, vamos usar a função `qda` do pacote `MASS`
+
+```{r}
+fit_qda <- qda(HeartDisease ~ ., data = banco_treino)
+```
+
+Podemos visualizar as médias dos grupos que foi estimada pelo modelo, e as médias que foi estimada para os grupos foi
+
+```{r}
+fit_qda$means
+```
+- Agora, vamos usar o modelo que foi ajustada no banco de teste para ver a capacidade do modelo em prever novas observações 
+
+```{r}
+y_pred_qda <- predict(fit_qda, banco_teste)
+```
+
+Observando a probabilidade posterior de algumas informações se enquadrar em grupos diferentes, temos: 
+
+```{r}
+y_pred_qda$posterior %>% 
+  head(n = 10) %>% 
+  knitr::kable()
+```
+- Verificando a matriz de confusão, bem como algumas métricas trazidas pela função `confusionMatrix` do pacote `caret`. 
+
+```{r}
+caret::confusionMatrix(y_pred_qda$class, banco_teste$HeartDisease)
+```
+
+```{r}
+taxa_erro_qda <- 1 - caret::confusionMatrix(y_pred_qda$class, banco_teste$HeartDisease)$overall[["Accuracy"]]
+
+taxa_erro_qda
+```
+
+:::{.callout-warning}
+## Comentário Análise Discriminante Quadrática 
+
+- De acordo com as métricas fornecidas pela matriz de confusão e pela `taxa de erro`, podemos observar que o modelo não foi bem ajustado, isso pode ter acontecido por causa da utilização apenas das variáveis númericas, pois, a acúracia do modelo foi de `r round(caret::confusionMatrix(y_pred_qda$class, banco_teste$HeartDisease)$overall[["Accuracy"]],3)`, sendo baixa. 
+:::
+
+## Regressão Logística
+
+- Para a regressão logística, vamos utilizar a função `glm` do pacote `stats`
+
+```{r}
+fit_lr <- glm(HeartDisease ~., data = banco_treino, family = binomial(link = "logit"))
+```
+
+Observando alguns resultados sobre se as variáveis são relevantes para a estimação. 
+
+```{r}
+summary(fit_lr)
+```
+`Resposta:` Podemos observar que duas variáveis ao nível de significância $\alpha$ de 10% não foi significativo para o modelo, todavia, vamos manter todas as variáveis, pois, já tivemos uma perca com a remoção das variáveis categóricas dos dados. 
+
+```{r}
+y_pred_lr <- as.factor(ifelse(predict(fit_lr, banco_teste, type = "response") >.5, "Doença Cardíaca", "Normal"))
+```
+
+`Comentário:` Definimos o ponto de corte em 0.5, todavia, essa pode não ter sido uma boa estratégia.
+
+```{r}
+caret::confusionMatrix(y_pred_lr, banco_teste$HeartDisease)
+```
+```{r, message=FALSE}
+taxa_erro_lr <- 1 - caret::confusionMatrix(y_pred_lr, banco_teste$HeartDisease)$overall[["Accuracy"]]
+
+taxa_erro_lr
+```
+
+:::{.callout-warning}
+## Comentário Regressão Logística 
+
+- De acordo com as métricas fornecidas pela matriz de confusão e pela `taxa de erro`, podemos observar que o modelo não foi bem ajustado, isso pode ter acontecido por causa da utilização apenas das variáveis númericas, pois, a acúracia do modelo foi de `r round(caret::confusionMatrix(y_pred_lr, banco_teste$HeartDisease)$overall[["Accuracy"]],3)`, sendo baixa.
+
+- **Interessante:** Os resultados foram iguais com a análise discriminante linear, inclusive a acurácia. 
+:::
+
+## Naive Bayes 
+
+- Ou popularmente como é conhecido, bayes ingênuo, para a utilização do naive bayes, vamos utilizar o pacote `e1071` e a função `naiveBayes`. 
+
+```{r}
+fit_naive <- e1071::naiveBayes(HeartDisease ~., data = banco_treino)
+```
+
+O resultado do ajuste por naive bayes, pode ser visto: 
+
+```{r}
+fit_naive
+```
+- Ajustando os valores para a predição dos valores do banco de treino. 
+
+```{r}
+y_pred_naive <- predict(fit_naive, banco_teste)
+```
+
+Observando os resultados dos valores preditos por Naive Bayes de acordo com as métricas fornecidas pela matriz de confusão
+
+```{r}
+caret::confusionMatrix(y_pred_naive, banco_teste$HeartDisease)
+```
+
+```{r}
+taxa_erro_naive <- 1 - caret::confusionMatrix(y_pred_naive, banco_teste$HeartDisease)$overall[["Accuracy"]]
+
+taxa_erro_naive
+```
+
+:::{.callout-warning}
+## Comentário Naive Bayes 
+
+- De acordo com as métricas fornecidas pela matriz de confusão e pela `taxa de erro`, podemos observar que o modelo não foi bem ajustado, isso pode ter acontecido por causa da utilização apenas das variáveis númericas, pois, a acúracia do modelo foi de `r round(caret::confusionMatrix(y_pred_naive, banco_teste$HeartDisease)$overall[["Accuracy"]],3)`, sendo baixa. 
+
+- **Interessante:** Mais uma vez podemos observar que a Acurácia e a taxa de erro do Naive Bayes foi igual dos modelos de Regressão Logística e Análise Discriminante Linear (LDA). 
+
+:::
+
+## KNN - com k = 5
+
+- Para isso vamos utilizar a função `knn` do pacote `class` 
+
+```{r}
+treino_Heart_Disease <- as.factor(banco_treino$HeartDisease)
+y_pred_knn <- knn(train = banco_treino[,-6], 
+                  test = banco_teste[,-6], 
+                  cl = treino_Heart_Disease, 
+                  k = 5)
+```
+
+Observando algumas observações como elas foram classificadas 
+
+```{r}
+y_pred_knn %>% 
+  head(n = 10)
+```
+Partindo para as métricas de avaliação via matriz de confusão, temos: 
+
+```{r}
+caret::confusionMatrix(y_pred_knn, banco_teste$HeartDisease)
+```
+```{r}
+taxa_erro_knn <- 1 - caret::confusionMatrix(y_pred_knn, banco_teste$HeartDisease)$overall[["Accuracy"]]
+
+taxa_erro_knn
+```
+
+:::{.callout-warning}
+## Comentário KNN  
+
+- De acordo com as métricas fornecidas pela matriz de confusão e pela `taxa de erro`, podemos observar que o modelo não foi bem ajustado, *sendo o pior modelo para os dados* ,isso pode ter acontecido por causa da utilização apenas das variáveis númericas, pois, a acúracia do modelo foi de `r round(caret::confusionMatrix(y_pred_knn, banco_teste$HeartDisease)$overall[["Accuracy"]],3)`, sendo baixa. 
+
+- As métricas mostram que foi o pior modelo ajustado aos dados, em comparação com os modelos ajustados anteriormente. 
+:::
+
+:::
+
+## Análise Final dos Ajustes 
+
+- Depois de ajustado os modelos, utilizamos aqui quatro métodos diferente, sendo eles: Análise Discriminante Linear (LDA), Análise Discriminante Quadrática (QDA), Regressão Logística, Naive Bayes e KNN com $k = 5$. 
+
+Os resultados das taxas de erro, podem ser vistas nessa tabela abaixo: 
+
+```{r}
+nomes <- c("Análise Discriminante Linear", "Análise Discriminante Quadrática", "Regressão Logística", "Naive Bayes", "KNN - com k = 5")
+valores <- c(taxa_erro_lda, taxa_erro_qda, taxa_erro_lr, taxa_erro_naive, taxa_erro_knn)
+banco_resultado <- tibble(nomes, round(valores,4))
+
+banco_resultado %>% 
+  knitr::kable(caption = "Tabela com a taxa de erro dos modelos ajustados", col.names = c("Modelo", "Taxa de Erro"))
+```
+
+:::{.callout-tip}
+
+## Conclusão Final 
+
+- Podemos observar que nenhum dos ajustes ficou de maneira ideal, com uma precisão ideal, exceto o modelo knn, que ficou extremamente ruim. Mais uma vez vale ressaltar que a permanência de variáveis categóricas poderiam dar uma boa contribuição em uma classificar mais precisa dos dados ajustados. 
+:::
+

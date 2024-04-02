@@ -1,0 +1,974 @@
+---
+title: "Aplicação de Validação Cruzada"
+author: "Paulo Manoel da Silva Junior"
+lang: pt
+format: 
+  html:
+    theme: materia
+    toc: true
+    toc-title: Sumário
+    toc-depth: 4
+    toc-location: right
+    code-copy: true
+    number-sections: false
+    code-tools: false
+    code-block-bg: true
+    smooth-scroll: true
+    code-fold: true
+    code-block-border-left: "#31BAE9"
+    number-depth: 3
+    html-math-method: mathjax
+self-contained: true
+page-layout: full
+editor: source
+---
+
+# Machine Learning - Aplicação de Validação Cruzada 
+
+:::{.callout-tip}
+## Objetivo 
+
+Aplicar validação cruzada e treinar alguns modelos e verificar qual o melhor modelo de acordo com algumas métricas de erro. 
+
+Utilizando `tidymodels` para treinar os modelos e junto com isso utilizando `workflows`. 
+
+:::
+
+:::{.callout-note}
+
+## Informações sobre o pacote **tidymodels**
+
+**O pacote tidymodels é um meta-pacote que consiste de algumas bibliotecas, tais como:**
+
+- `rsample:` funções para particionamento e reamostragem eficiente de dados;
+
+
+- `parsnip:` interface unificada para um amplo conjunto de modelos que podem ser testados sem que o usuário se preocupe com diferenças de sintaxe;
+
+
+- `recipes:` pré-processamento e feature engineering;
+
+
+- `workflows:` junta pré-processamento, modelagem (treinamento) e pós-processamento;
+tune: otimização de hiperparâmetros;
+
+
+- `yardstick:` funções para avaliar a efetividade de modelos através de medidas de performance;
+broom: converte a informação contida em objetos comuns de R para o formato tidy;
+
+
+- `dials:` cria e gerencia hiperparâmetros de ajuste e grids de hiperparâmetros.
+
+Outras bibliotecas serão também utilizadas no processo, como a finetune, que permite um processo de otimização de hiperparâmetros mais eficiente.
+:::
+
+
+## Informações sobre o banco de dados e sobre as variáveis 
+
+
+
+:::{.callout-note}
+
+## Disponibilidade de informação geral
+-   O conjunto de dados trata-se de *11 características clínicas utilizadas para a previsão de possíveis eventos relacionados a doenças cardiovasculares.*
+
+O conjunto de dados pode ser encontrado em: [conjunto de dados](https://www.kaggle.com/datasets/fedesoriano/heart-failure-prediction)
+:::
+
+
+
+**Mais sobre o banco de dados**
+
+As doenças cardiovasculares (DCVs) são a causa número 1 de morte no mundo, levando cerca de 17,9 milhões de vidas a cada ano, o que representa 31% de todas as mortes em todo o mundo. Quatro em cada 5 mortes por DCV são devidas a ataques cardíacos e derrames, e um terço dessas mortes ocorre prematuramente em pessoas com menos de 70 anos de idade. A insuficiência cardíaca é um evento comum causado por DCVs e este conjunto de dados contém 11 recursos que podem ser usados para prever uma possível doença cardíaca.
+
+Pessoas com doenças cardiovasculares ou com alto risco cardiovascular (devido à presença de um ou mais fatores de risco, como hipertensão, diabetes, hiperlipidemia ou doença já estabelecida) precisam de detecção e gerenciamento precoces, em que um modelo de aprendizado de máquina pode ser de grande ajuda.
+
+
+*Sobre as variáveis dependentes:*
+
+`Idade:` idade do paciente em anos
+
+`Sexo:` sexo do paciente \[M: Masculino, F: Feminino\]
+
+`ChestPainType:` tipo de dor no peito \[TA: Angina Típica, ATA: Angina Atípica, NAP: Dor Não Anginosa, ASY: Assintomática\]
+
+`RestingBP:` pressão arterial em repouso \[mm Hg\]
+
+`Colesterol`: colesterol sérico \[mm/dl\]
+
+`JejumBS:` açúcar no sangue em jejum \[1: se JejumBS \> 120 mg/dl, 0: caso contrário\]
+
+`ECG em repouso:` resultados do eletrocardiograma em repouso \[Normal: Normal, ST: com anormalidade da onda ST-T (inversões da onda T e/ou elevação ou depressão do ST \> 0,05 mV), HVE: mostrando hipertrofia ventricular esquerda provável ou definitiva pelos critérios de Estes\]
+
+`MaxHR:` frequência cardíaca máxima alcançada \[Valor numérico entre 60 e 202\]
+
+`ExerciseAngina:` angina induzida por exercício \[S: Sim, N: Não\]
+
+`Oldpeak:` oldpeak = ST \[Valor numérico medido na depressão\]
+
+`ST_Slope:` a inclinação do segmento ST do exercício de pico \[Up: ascendente, Flat: plano, Down: descendente\]
+
+*Sobre a variável resposta:*
+
+`HeartDisease:` classe de saída \[1: doença cardíaca, 0: normal\]
+
+
+
+## Carregamento dos Dados 
+
+
+```{r, echo=FALSE, include=FALSE}
+rm(list=ls(all=T))
+gc()
+```
+
+- Carregando o banco de dados 
+
+```{r, message=FALSE, warning=FALSE}
+setwd("\\Users\\paulo\\OneDrive\\Área de Trabalho\\ESTATÍSTICA\\UFPB\\8º PERÍODO\\ANÁLISE MULTIVARIADA II\\PROVA")
+banco <- read.csv2("heart.csv", header = T, sep = ",")
+```
+
+- Carregando as bibliotecas 
+
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse) # Framework do tidyverse
+library(tidymodels) # Framework de modelagem
+library(skimr) # Estatística descritiva rápida
+library(DataExplorer) # Exploração do conjunto de dados
+library(corrplot) # Gráfico de correlação
+library(GGally) # Gráficos adicionais com estrutura ggplot2
+library(stringr) # Para lidar com strings
+library(glmnet) # LASSO, Ridge e Rede Elástica
+library(MASS) # Discriminante Linear (LDA) e Quadrático (RL)
+library(recipes) # Pré-processamento dos dados
+library(class) #knn
+library(themis) # Balanceamento de dados
+library(discrim) # lda, qda
+library(kknn) # (Kernel) K-NN
+library(finetune) # Otimização fina de hiperparâmetros
+library(gt) # Para tabelas de maneira melhor visualmente 
+library(dplyr) # Para tratamento dos dados 
+library(plotly) # Para gráficos de melhor qualidade
+library(stringr) # Para tratamentos com strings de maneira melhor
+```
+
+
+## Visualizando o banco
+
+```{r}
+glimpse(banco)
+```
+
+- Como observamos acima é necessário ainda realizar algumas transformações
+
+```{r}
+banco$Sex <- factor(banco$Sex, levels = c("M","F"), labels = c("Masculino", "Feminino"))
+banco$ChestPainType <- factor(banco$ChestPainType, levels = c("TA", "ATA", "NAP", "ASY"), labels = c("Angina Típica", "Angina Atípica", "Dor Não Anginosa", "Assintomática"))
+banco$FastingBS <- factor(banco$FastingBS, levels = c(0,1),labels = c("C.C", "JejumBS > 120 mg/dl"))
+banco$RestingECG <- factor(banco$RestingECG, levels = c("Normal", "ST", "LVH"), labels = c("Normal", "anormalidade da onda", "hipertrofia ventricular"))
+banco$ExerciseAngina <- factor(banco$ExerciseAngina, levels = c("N", "Y"), labels = c("Não", "Sim"))
+banco$ST_Slope <- factor(banco$ST_Slope, levels = c("Up", "Flat", "Down"), labels = c("Ascendente", "Plano", "Descendente"))
+banco$HeartDisease <- factor(banco$HeartDisease, levels = c(0,1),labels = c("Normal", "Doença cardiaca"))
+banco$Oldpeak <- as.numeric(banco$Oldpeak)
+```
+
+
+- Como foi dito anteriormente, vamos ficar apenas com as variáveis que são númericas. 
+
+```{r}
+glimpse(banco)
+```
+
+ - Verificando a quantidade de informações ausentes no banco de dados 
+ 
+```{r}
+visdat::vis_miss(banco)
+```
+Podemos observar que não há informação ausente no banco de dados 
+
+## Análise Exploratória dos Dados 
+
+
+
+- Uma análise Exploratória de maneira mais geral, utilizando a função `skim` do pacote `skimr`
+
+```{r}
+skim(banco)
+```
+- Agora, podemos analisar de maneira mais precisa dentro das classes de acordo com algumas medidas (posição e dispersão) de interesse, bem como a visualização gráfica do boxplot dessas variáveis de acordo com o grupo. 
+
+
+### Variáveis númericas 
+
+
+:::{.callout-note}
+
+## Medidas de Posição e Dispersão
+
+As medidas de posição e dispersão que serão utilizadas serão:
+
+- Média 
+
+- Mediana
+
+- 1º Quartil 
+
+- 3º Quartil
+
+- Mínimo
+
+- Máximo
+
+- Desvio Padrão 
+
+- Coeficiente de Variação
+
+:::
+
+
+
+:::{.panel-tabset}
+
+## Idade 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Age, na.rm = T),
+            mediana = median(Age, na.rm = T), 
+            quartil_1 = quantile(Age, 0.25, na.rm = T), 
+            quartil_3 = quantile(Age, 0.75, na.rm = T), 
+            minimo = min(Age, na.rm = T), 
+            maximo = max(Age, na.rm = T), 
+            desvio = sd(Age, na.rm = T), 
+            coeficiente = round(sd(Age, na.rm = T)/mean(Age, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Idade de acordo com a presença ou ausência de doença cardíaca")
+```
+
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Age, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Idade de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário
+
+No boxplot acima, pacientes que apresentaram doenças cardíacas possuem uma variabilidade menor de idade quando comparado com pacientes que não apresentaram. Além disso nota-se a presença de 4 outliers referentes a pacientes que apresentaram doenças cardiovasculares antes dos 35 anos.
+
+Também podemos observar 75% dos pacientes que não apresentaram doenças cardiovasculares são mais novos que a idade mediana dos pacientes que apresentaram doenças cardiovasculares. Isto é, pode-se levantar a hipótese de que a idade talvez tenha uma contribuição significativa para o desenvolvimento de doenças cardíacas.
+:::
+
+## Frequência Máxima Cardíaca
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(MaxHR, na.rm = T),
+            mediana = median(MaxHR, na.rm = T), 
+            quartil_1 = quantile(MaxHR, 0.25, na.rm = T), 
+            quartil_3 = quantile(MaxHR, 0.75, na.rm = T), 
+            minimo = min(MaxHR, na.rm = T), 
+            maximo = max(MaxHR, na.rm = T), 
+            desvio = sd(MaxHR, na.rm = T), 
+            coeficiente = round(sd(MaxHR, na.rm = T)/mean(MaxHR, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Frequência Máxima Cardíaca de acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$MaxHR, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Frequência Máxima Cardíaca de acordo com a presença ou ausência de doença cardíaca")
+```
+
+:::{.callout-note}
+
+## Comentário
+
+Como o coração de pessoas com doenças cardíacas não estão funcionando de maneira adequada, quando se é necessária uma carga maior de trabalho o coração desse indivíduo não consegue trabalhar de forma tão eficiente quanto o coração de uma pessoa saudável. Por conta disso, 75% dos indíviduos doentes possuem a frequência máxima cardíaca abaixo da mediana da frequência máxima cardíaca do grupo de pessoas saudáveis.
+:::
+
+## Pressão Arterial em Repouso
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(RestingBP, na.rm = T),
+            mediana = median(RestingBP, na.rm = T), 
+            quartil_1 = quantile(RestingBP, 0.25, na.rm = T), 
+            quartil_3 = quantile(RestingBP, 0.75, na.rm = T), 
+            minimo = min(RestingBP, na.rm = T), 
+            maximo = max(RestingBP, na.rm = T), 
+            desvio = sd(RestingBP, na.rm = T), 
+            coeficiente = round(sd(RestingBP, na.rm = T)/mean(RestingBP, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva da Pressão Arterial em Repouso de acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$RestingBP, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot da Pressão Arterial em Repouso de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário 
+
+Apesar de ambos os grupos apresentarem dados semelhantes, o grupo que possui doenças cardiovasculares é ligeiramente maior que o grupo de indivíduos saudáveis. Afinal, o coração doente por não apresentar os batimentos tão eficientes quanto um coração saudável, as artérias tendem a compensar esses batimentos cardíacos aumentando sua pressão.
+
+:::
+
+## Colesterol Sérico 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Cholesterol, na.rm = T),
+            mediana = median(Cholesterol, na.rm = T), 
+            quartil_1 = quantile(Cholesterol, 0.25, na.rm = T), 
+            quartil_3 = quantile(Cholesterol, 0.75, na.rm = T), 
+            minimo = min(Cholesterol, na.rm = T), 
+            maximo = max(Cholesterol, na.rm = T), 
+            desvio = sd(Cholesterol, na.rm = T), 
+            coeficiente = round(sd(Cholesterol, na.rm = T)/mean(Cholesterol, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva do Colesterol Sérico de Acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Cholesterol, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot do Colesterol Sérico de acordo \ncom a presença ou ausência de doença cardíaca")
+```
+
+:::{.callout-note}
+
+## Comentário
+
+Devem existir inúmeros fatores que podem implicar uma maior variabilidade do colesterol no grupo de pessoas que possuem doenças cardíacas, uma delas pode estar relacionada com o fato do uso de medicações para diminuir e tentar controlar esse nível do colesterol.
+
+Após a visualização gráfica do boxplot, observamos uma diferença significativa na variação dos dados do colesterol de acordo com a presença ou ausência de doença cardíaca.
+:::
+
+## Valor númerico medido na depressão 
+
+```{r}
+banco %>% 
+  group_by(HeartDisease) %>% 
+  summarise(media = mean(Oldpeak, na.rm = T),
+            mediana = median(Oldpeak, na.rm = T), 
+            quartil_1 = quantile(Oldpeak, 0.25, na.rm = T), 
+            quartil_3 = quantile(Oldpeak, 0.75, na.rm = T), 
+            minimo = min(Oldpeak, na.rm = T), 
+            maximo = max(Oldpeak, na.rm = T), 
+            desvio = sd(Oldpeak, na.rm = T), 
+            coeficiente = round(sd(Oldpeak, na.rm = T)/mean(Oldpeak, na.rm = T)*100,2)) %>% 
+  knitr::kable(col.names = c("Grupo", "Média", "Mediana", "1º Quartil", "3º Quartil", "Mínimo", "Máximo", "Desvio Padrão", "Coeficiente de Variação (%)"), caption = "Estatística Descritiva do valor númerico medido na depressão de Acordo com a presença ou ausência de doença cardíaca")
+```
+```{r, message=FALSE, warning=FALSE}
+plot_ly(banco, x = banco$Oldpeak, color = banco$HeartDisease, type = "box") %>% 
+  layout(title = "Boxplot do banco do valor númerico medido \nna depressão de acordo com a presença ou ausência de doença cardíaca")
+```
+:::{.callout-note}
+
+## Comentário 
+
+Podemos observar que no grupo normal, temos a presença de muitos outliers, já no grupo de doença cardíaca, entre o primeiro e terceiro quartil podemos enxergar uma variabilidade maior do que comparando esses mesmos quartis. 
+:::
+
+
+## Correlação
+
+Agora, vamos visualizar a matriz de correlação das variáveis preditoras 
+
+```{r}
+rho <- banco %>% 
+  dplyr::select(where(is.numeric)) %>% 
+  cor()
+
+corrplot::corrplot(rho, method = "circle", type = "lower")
+```
+:::
+
+### Variáveis Categóricas 
+
+:::{.panel-tabset}
+
+## Variável dependente 
+
+- Como variável dependente temos se o paciente tem doença cardíaca ou não, sendo assim a quantidade de pessoas que possuem em nosso banco é essa: 
+
+```{r}
+banco %>% 
+  dplyr::group_by(HeartDisease) %>% 
+  dplyr::summarise(quantidade = n(), 
+            proporção = round(n()/dim(banco)[1]*100,2)) %>%
+  knitr::kable(caption = "Descritiva da Quantidade de Indívidios com ou sem doença cardíaca", col.names = c("Grupo", "Quantidade", "Proporção"))
+  
+```
+
+## Eletrocardiograma em Repouso
+
+```{r, message=FALSE, warning=FALSE}
+banco %>% 
+  count(HeartDisease, RestingECG) %>% 
+  group_by(HeartDisease) %>% 
+  mutate(percent = n / sum(n) *100,
+         percent = round(percent, 2)) %>% 
+  gt::gt() %>% 
+    gt::tab_header(
+    title = "Situação dos pacientes quanto a presença de doença cardíaca",
+    subtitle = "Com relação ao eletrocardiograma em repouso"
+  ) %>% 
+  gt::cols_label(
+    RestingECG = "ECG em Repouso",
+    n = "Frequência",
+    percent = "Percentual"
+  ) %>% 
+  gt::fmt_number(
+    columns = vars(n),
+    suffixing = T, 
+    decimals = 0
+  )
+```
+
+## Inclinação do Segmento 
+
+```{r, message=FALSE, warning=FALSE}
+banco %>% 
+  count(HeartDisease, ST_Slope) %>% 
+  group_by(HeartDisease) %>% 
+  mutate(percent = n / sum(n) *100,
+         percent = round(percent, 2)) %>% 
+  gt::gt() %>% 
+    gt::tab_header(
+    title = "Situação dos pacientes quanto a presença de doença cardíaca",
+    subtitle = "Com relação a inclinação do Segmento"
+  ) %>% 
+  gt::cols_label(
+    ST_Slope = "Inclinação do Segmento",
+    n = "Frequência",
+    percent = "Percentual"
+  ) %>% 
+  gt::fmt_number(
+    columns = vars(n),
+    suffixing = TRUE, 
+    decimals = 0
+  ) 
+```
+
+## Sexo
+
+```{r, message=FALSE, warning=FALSE}
+banco %>% 
+  count(HeartDisease, Sex) %>% 
+  group_by(HeartDisease) %>% 
+  mutate(percent = n / sum(n) *100,
+         percent = round(percent, 2)) %>% 
+  gt::gt() %>% 
+    gt::tab_header(
+    title = "Situação dos pacientes quanto a presença de doença cardíaca",
+    subtitle = "Com relação ao Sexo"
+  ) %>% 
+  gt::cols_label(
+    Sex = "Sexo",
+    n = "Frequência",
+    percent = "Percentual"
+  ) %>% 
+  gt::fmt_number(
+    columns = vars(n),
+    suffixing = TRUE,
+    decimals = 0
+  ) 
+```
+
+## Tipo de dor no peito 
+
+```{r, message=FALSE, warning=FALSE}
+banco %>% 
+  count(HeartDisease, ChestPainType) %>% 
+  group_by(HeartDisease) %>% 
+  mutate(percent = n / sum(n) *100,
+         percent = round(percent, 2)) %>% 
+  gt::gt() %>% 
+    gt::tab_header(
+    title = "Situação dos pacientes quanto a presença de doença cardíaca",
+    subtitle = "Com relação a dor no peito"
+  ) %>% 
+  gt::cols_label(
+    ChestPainType = "Tipo de dor no peito",
+    n = "Frequência",
+    percent = "Percentual"
+  ) %>% 
+  gt::fmt_number(
+    columns = vars(n),
+    suffixing = TRUE,
+    decimals = 0
+  ) 
+```
+
+## Açúcar no sangue em jejum
+
+```{r, message=FALSE, warning=FALSE}
+banco %>% 
+  count(HeartDisease, FastingBS) %>% 
+  group_by(HeartDisease) %>% 
+  mutate(percent = n / sum(n) *100,
+         percent = round(percent, 2)) %>% 
+  gt::gt() %>% 
+    gt::tab_header(
+    title = "Situação dos pacientes quanto a presença de doença cardíaca",
+    subtitle = "Com relação ao Açúcar no Sengue em Jejum"
+  ) %>% 
+  gt::cols_label(
+    FastingBS = "Açucar no Sangue",
+    n = "Frequência",
+    percent = "Percentual"
+  ) %>% 
+  gt::fmt_number(
+    columns = vars(n),
+    suffixing = TRUE,
+    decimals = 0
+  ) 
+```
+:::
+
+
+## Ajuste dos Modelos 
+
+### Particionamento do conjunto de dados 
+
+- Primeiro é necessário particionar o conjunto de dados em treinamento e teste, lembrando que os dados de treinamento ainda serão submetidos a **validação cruzada** para buscarmos os melhores valores de hiperparâmetros para alguns modelos. 
+
+```{r}
+set.seed(2024)
+split_inicial <- initial_split(banco, prop = 0.75, strata = HeartDisease)
+banco_treino <- training(split_inicial)
+banco_teste <- testing(split_inicial)
+```
+
+### Pré-processamento
+
+Para o pré-processamento é a parte de aplicarmos algumas receitas para melhorar os dados, com isso utilizamos a biblioteca `recipes`, e aplicamos as **receitas** de acordo com as necessidades que possuímos. 
+
+```{r}
+banco_receita <- recipe(HeartDisease ~ ., data = banco_treino) %>%
+  # step_impute_knn(all_predictors(), neighbors = 5) %>% # imputa valores ausentes por K-NN
+  # step_impute_bag(all_predictors()) %>% # imputa valores ausentes por bagged trees
+  # step_impute_mean(all_numeric_predictors()) %>% # imputa valores ausentes pela média
+  # step_impute_median(all_numeric_predictors()) %>% # imputa valores ausentes pela mediana
+  # step_impute_mode(all_predictors()) %>% # imputa valores ausentes pela mediana
+  # step_naomit(everything(), skip = TRUE) %>% # remove linhas que contém NA ou NaN
+  # step_interact(terms = ~ all_numeric_predictors():all_numeric_predictors()) %>%
+  # step_log( # Transformação log: y = log(x)
+  #   ) %>%
+  step_YeoJohnson( # Transformação Yeo-Johnson
+    all_numeric_predictors()
+    ) %>%
+  # step_poly(all_numeric_predictors(), degree = 2) %>%
+  step_normalize( # normaliza variáveis numéricas para terem média 0 e variância 1
+    all_numeric_predictors()
+    ) %>%
+  # step_range( # normaliza variáveis numéricas para pertencerem ao intervalo [0,1]
+  #   all_numeric_predictors()
+  #   ) %>%
+   step_dummy(all_nominal_predictors()) %>% # converte variáveis qualitativas em variáveis dummy
+  step_smote(HeartDisease, over_ratio = 1) %>% # Balanceamento de classes usando SMOTE
+  # step_upsample(diagnosis) %>% # Balanceamento de classes usando upsample
+  # step_downsample(diagnosis) %>% # Balanceamento de classes usando downsample
+  # step_nzv(all_numeric_predictors()) %>% # remove variáveis que têm variância próxima de zero
+  step_corr( # remove preditores que tenham alta correlação com algum outro preditor
+    all_numeric_predictors(),
+    threshold = 0.8,
+    method = "spearman"
+    )
+```
+
+Depois de aplicar as receitas precisamos continuar para extrair o banco aplicando as receitas. 
+
+```{r}
+# Dessa vez, não usaremos os "dados preparados" explicitamente, mas criarei esse objeto para verificarmos o efeito do smote e da imputação dos valores ausentes
+set.seed(2024)
+banco_preparado <- 
+  banco_receita %>% # usa a receita
+  prep() %>% # aplica a receita no conjunto de treinamento
+  juice() # extrai apenas o dataframe preprocessado
+```
+
+- Vamos observar como ficou a quantidade de observações nas classes no banco de treinamento depois de aplicar o balanceamento nas variáveis para não ter mais prejuízos mais a frente na utilização do modelo com uma acurácia superestimada. 
+
+```{r}
+tabela <- banco_preparado %>% 
+  count(HeartDisease) %>% 
+  as.tibble()
+  
+
+tabela %>%
+  gt::gt() %>% 
+  tab_header(
+    title = gt::html("<b> Quantidade de Presentes de acordo com as classes</b>"), 
+    subtitle = glue::glue("No banco de Treinamento")) %>% 
+  gt::tab_source_note(
+    gt::html("<b> Fonte:</b> Elaboração Própria")
+  ) %>% 
+  gt::cols_label(
+  HeartDisease = "Classe", 
+  n = "Quantidade"
+  )
+```
+### Conjunto de Validação 
+
+Utilizamos o método $k$-fold cross-validation para construir um conjunto de validação com 
+$k$ folds. Consideramos um procedimento com $k = 10$ folds. Os dados são particionados em 10 partes utilizando amostragem estratificada e, em cada iteração, os modelos são ajustados em um conjunto de treinamento com composto por 9 dessas partes e avaliado em um conjunto de teste composto por 1 dessas partes. Esse procedimento foi utilizado para avaliar o modelo e obter os valores ótimos dos hiperparâmetros dos modelos.
+
+```{r}
+cv_folds <- vfold_cv(banco_treino, 
+                     v = 10, 
+                     strata = HeartDisease)
+```
+
+
+### Otimização dos Hiperparâmetros e definição dos modelos 
+
+Os hiperparâmetros dos modelos foram otimizados no processo de validação cruzada. A busca pelos valores ótimos dos hiperparâmetros se deu através de um processo de busca em uma grade aleatória de valores definida através de um esquema de hipercubo latino, visando preencher adequadamente o espaço de valores dos hiperparâmetros.
+
+```{r}
+knn_spec <- nearest_neighbor(neighbors = tune()) %>% # K-NN
+  set_mode("classification") %>%
+  set_engine("kknn")
+
+nbayes_spec <- naive_Bayes() %>% # Naive Bayes
+  set_engine("naivebayes") %>%
+  set_mode("classification")
+
+lda_spec <- discrim_linear() %>% # Linear discriminant analysis
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+qda_spec <- discrim_quad() %>% # Quadratic discriminant analysis
+  set_engine("MASS") %>%
+  set_mode("classification")
+
+reg_log_spec <- logistic_reg(penalty = tune(), mixture = tune()) %>% # RL
+  set_engine(engine = "glmnet", standardize = FALSE) %>%
+  set_mode("classification")
+```
+
+
+- Treinando o fluxo de tarefas 
+
+```{r}
+wf = workflow_set(
+  preproc = list(banco_receita),
+  models = list(
+    KNN = knn_spec,
+    Nayve_Bayes = nbayes_spec,
+    LDA = lda_spec,
+    QDA = qda_spec,
+    Reg_log = reg_log_spec
+  )
+) %>%
+  mutate(wflow_id = gsub("(recipe_)", "", wflow_id))
+```
+
+### Treinando os modelos 
+
+```{r, message=FALSE, warning=FALSE}
+grid_ctrl = control_grid(
+  save_pred = TRUE,
+  parallel_over = "resamples",
+  save_workflow = TRUE
+)
+grid_results = wf %>%
+  workflow_map(
+    seed = 13,
+    resamples = cv_folds,
+    grid = 10,
+    control = grid_ctrl
+  )
+```
+
+### Verificando os resultados dos modelos 
+
+```{r}
+autoplot(grid_results)
+```
+:::{.callout-tip}
+
+## Resultados preliminares
+
+- Podemos observar que nos dados de treinamento o modelo que teve o melhor ajuste foi um de KNN, com base na curva ROC e na Acurácia. Vamos continuar observando qual o melhor modelo e vendo os valores de algumas métricas. 
+
+::: 
+
+- Visualizando as métricas de maneira isolada graficamente dos melhores modelos. 
+
+:::{.panel-tabset}
+
+## Curva ROC
+
+```{r}
+autoplot(grid_results, select_best = TRUE, metric = "roc_auc")
+```
+
+- Observando os valores de maneira mais analítica 
+
+```{r, message=FALSE, warning=FALSE}
+results <- workflowsets::rank_results(grid_results,
+                          select_best = TRUE,
+                          rank_metric = "roc_auc") %>%
+  filter(.metric == "roc_auc") %>%
+  dplyr::select(wflow_id, mean, std_err, model, rank)
+
+colnames(results) <- c("Método", "Média", "Desvio Padrão", "Modelo", "Ranking")
+
+results$Método[which(results$Método=="Reg_log")] <- "Regressão Logística"
+results$Método[which(results$Método=="LDA")] <- "Discriminante Linear"
+results$Método[which(results$Método=="QDA")] <- "Discriminante Quadrática"
+results$Método[which(results$Método=="KNN")] <- "Knn - mais próximos"
+results$Método[which(results$Método=="Nayve_Bayes")] <- "Nayve Bayes"
+
+results$Média <- round(results$Média, 4)
+results$`Desvio Padrão` <- round(results$`Desvio Padrão`, 4)
+
+results %>% gt() %>% 
+  gt::tab_header(
+    title = gt::html("<b> Resultado do Treinamento dos Modelos</b>"), 
+    subtitle = glue::glue("De acordo com a métrica da curva Roc")) %>% 
+  gt::tab_source_note(
+    gt::html("<b> Fonte:</b> Elaboração própria")
+  ) %>% 
+  gt::data_color(
+    columns = Média, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 5, palette = "Blue"), 
+      domain = c(min(results$Média), max(results$Média)),
+      reverse = TRUE
+    )
+  )
+```
+
+
+## Acurácia
+
+```{r}
+autoplot(grid_results, select_best = TRUE, metric = "accuracy")
+```
+
+- Observando de maneira analítica, temos a seguinte informação: 
+
+```{r, message=FALSE, warning=FALSE}
+results_acc <- workflowsets::rank_results(grid_results,
+                          select_best = TRUE,
+                          rank_metric = "accuracy") %>%
+  filter(.metric == "accuracy") %>%
+  dplyr::select(wflow_id, mean, std_err, model, rank)
+
+colnames(results_acc) <- c("Método", "Média", "Desvio Padrão", "Modelo", "Ranking")
+
+results_acc$Método[which(results_acc$Método=="Reg_log")] <- "Regressão Logística"
+results_acc$Método[which(results_acc$Método=="LDA")] <- "Discriminante Linear"
+results_acc$Método[which(results_acc$Método=="QDA")] <- "Discriminante Quadrática"
+results_acc$Método[which(results_acc$Método=="KNN")] <- "Knn - mais próximos"
+results_acc$Método[which(results_acc$Método=="Nayve_Bayes")] <- "Nayve Bayes"
+
+results_acc$Média <- round(results_acc$Média, 4)
+results_acc$`Desvio Padrão` <- round(results_acc$`Desvio Padrão`, 4)
+
+results_acc %>% gt() %>% 
+  gt::tab_header(
+    title = gt::html("<b> Resultado do Treinamento dos Modelos</b>"), 
+    subtitle = glue::glue("De acordo com a métrica da Acurácia")) %>% 
+  gt::tab_source_note(
+    gt::html("<b> Fonte:</b> Elaboração própria")
+  ) %>% 
+  gt::data_color(
+    columns = Média, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 5, palette = "Blue"), 
+      domain = c(min(results_acc$Média), max(results_acc$Média)),
+      reverse = TRUE
+    )
+  )
+
+```
+
+
+
+:::
+
+Agora é necessário selecionar o melhor modelos dos que foram treinados (um de cada modelo), com base na estimação dos hiperparâmetros para aplicar os dados de teste. 
+
+- **Observação:** Como o único modelo que houve o *tune* dos hiperparâmetros foi o KNN, apenas selecionar os dados dele seria suficiente, mas por padrão vamos fazer dos demais. 
+
+```{r}
+best_set_linear = grid_results %>% 
+  extract_workflow_set_result("Reg_log") %>% 
+  select_best(metric = "accuracy")
+best_set_knn = grid_results %>% 
+  extract_workflow_set_result("KNN") %>% 
+  select_best(metric = "accuracy")
+best_set_nbayes = grid_results %>%
+  extract_workflow_set_result("Nayve_Bayes") %>% 
+  select_best(metric = "accuracy")
+best_set_lda = grid_results %>% 
+  extract_workflow_set_result("LDA") %>% 
+  select_best(metric = "accuracy")
+best_set_qda = grid_results %>% 
+  extract_workflow_set_result("QDA") %>% 
+  select_best(metric = "accuracy")
+```
+
+
+O modelo KNN que foi o melhor teve um número de `r best_set_knn$neighbors` vizinhos. 
+
+```{r}
+best_set_linear %>% 
+  gt() %>% 
+  gt::tab_header(
+    title = gt::html("<b> Resultado dos hiperparâmetros do melhor ajuste</b>"), 
+    subtitle = glue::glue("Do modelo de Regressão Logística")) %>% 
+  gt::tab_source_note(
+    gt::html("<b> Fonte:</b> Elaboração própria")
+  ) %>% 
+  gt::cols_label(
+    penalty = "Penalização", 
+    mixture = "Mistura", 
+    .config = "Configuração"
+  )
+```
+
+
+## Avaliando os modelos no conjunto de *teste*
+
+Esses conjuntos de hiperparâmetros ótimos foram utilizados para reajustar os modelos no conjunto de treinamento completo para, em seguida, obter predições das classes da variável alvo no conjunto de teste. Foram calculadas as seguintes medidas no conjunto de teste: acurácia, área sob a curva ROC, *F-measure*, *precision*, *recall*, *especificidade* e *Kappa.*
+
+- Para isso criamos uma função que vai facilitar todo o trabalho 
+
+```{r}
+resultado_teste <- function(rc_rslts, fit_obj, par_set, split_obj) {
+  res <- rc_rslts %>%
+    extract_workflow(fit_obj) %>%
+    finalize_workflow(par_set) %>%
+    last_fit(split = split_obj,
+             metrics = metric_set(
+              accuracy,roc_auc,
+              f_meas,precision,
+              recall,spec,kap))
+  res
+}
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+resultado_teste_reg_log <- resultado_teste(grid_results, "Reg_log", best_set_linear, split_inicial)
+resultado_teste_knn <- resultado_teste(grid_results, "KNN", best_set_knn, split_inicial)
+resultado_teste_lda <- resultado_teste(grid_results, "LDA", best_set_lda, split_inicial)
+resultado_teste_qda <- resultado_teste(grid_results, "QDA", best_set_qda, split_inicial)
+resultado_teste_naive <- resultado_teste(grid_results, "Nayve_Bayes", best_set_nbayes, split_inicial)
+```
+
+- Agora, vamos coletar as métricas e observar os resultados: 
+
+```{r, message=FALSE, warning=FALSE}
+metrics_table <- rbind(collect_metrics(resultado_teste_reg_log)$.estimate, 
+                       collect_metrics(resultado_teste_knn)$.estimate, 
+                       collect_metrics(resultado_teste_lda)$.estimate, 
+                       collect_metrics(resultado_teste_qda)$.estimate, 
+                       collect_metrics(resultado_teste_naive)$.estimate)
+```
+
+Ajustando a tabela de métricas 
+
+```{r, message=FALSE, warning=FALSE}
+metrics_table <- round(metrics_table, 4)
+
+row_names <- c("Regressão Logística", "KNN", "Discriminante Linear", "Discriminante Quadrático", "Naive Bayes")
+
+metrics_table <- cbind(row_names, metrics_table)
+
+metrics_table <- metrics_table %>% 
+  as.tibble()
+```
+
+```{r, message=FALSE, warning=FALSE}
+colnames(metrics_table) <- c("Método", "Acurácia", "Curva Roc", "f_means", "Precisão", "Recall", "Específicidade", "Kappa")
+
+metrics_table <- metrics_table %>% 
+  mutate(Acurácia = as.numeric(Acurácia), 
+         `Curva Roc` = as.numeric(`Curva Roc`), 
+         f_means = as.numeric(f_means), 
+         Precisão = as.numeric(Precisão), 
+         Recall = as.numeric(Recall), 
+         Específicidade = as.numeric(Específicidade), 
+         Kappa = as.numeric(Kappa)) %>% 
+  arrange(desc(Acurácia), desc(`Curva Roc`), desc(f_means), desc(Kappa)) 
+  
+metrics_table %>%  
+  gt::gt() %>% 
+  gt::tab_header(
+    title = gt::html("<b> Resultado dos modelos nos dados de teste</b>"), 
+    subtitle = glue::glue("De acordo com algumas métricas")) %>% 
+  gt::tab_source_note(
+    gt::html("<b> Fonte:</b> Elaboração própria")
+  ) %>%  
+  gt::data_color(
+    columns = Acurácia, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$Acurácia), max(metrics_table$Acurácia)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = `Curva Roc`, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$`Curva Roc`), max(metrics_table$`Curva Roc`)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = f_means, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$f_means), max(metrics_table$f_means)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = Precisão, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$Precisão), max(metrics_table$Precisão)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = Recall, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$Recall), max(metrics_table$Recall)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = Específicidade, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$Específicidade), max(metrics_table$Específicidade)),
+      reverse = TRUE
+    )
+  ) %>% 
+  gt::data_color(
+    columns = Kappa, 
+    colors = scales::col_numeric(
+      palette = colorspace::sequential_hcl(n = 10, palette = "Blue"), 
+      domain = c(min(metrics_table$Kappa), max(metrics_table$Kappa)),
+      reverse = TRUE
+    )
+  )
+  
+```
+:::{.callout-tip}
+
+## Conclusão 
+
+Na tarefa passada, sem aplicar alguns desses métodos e com menos variáveis, tivemos uma acurácia menor do que 80%, agora com a aplicação desses métodos e com a utilização de mais variáveis, podemos observar que a acurácia do melhor modelo que foi o `r metrics_table[which.max(metrics_table$Acurácia),1]` foi de `r max(metrics_table$Acurácia)`, e o pior método pela acurácia foi o método `r metrics_table[which.min(metrics_table$Acurácia),1]`. 
+
+- Mas, pode ser que com os métodos baseados em árvores ou tunando outros parâmetros o resultado melhore bastante.
+:::
+
